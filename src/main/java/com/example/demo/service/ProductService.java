@@ -16,5 +16,7 @@ public interface ProductService {
 
     Page<IProduct> findAll(Pageable pageable);
 
-    Flowable<IProduct> getProductsPageStream(Pageable pageable);
+    Flowable<IProduct> findUsingStreamFactory(Pageable pageable);
+
+    Flowable<IProduct> findUsingSolrTemplate(Pageable pageable);
 }

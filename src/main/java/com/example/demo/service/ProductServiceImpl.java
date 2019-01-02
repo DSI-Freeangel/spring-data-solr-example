@@ -54,8 +54,15 @@ public class ProductServiceImpl implements ProductService {
     }
 
     @Override
-    public Flowable<IProduct> getProductsPageStream(Pageable pageable) {
-        return customRepository.performStreamSearch()
+    public Flowable<IProduct> findUsingStreamFactory(Pageable pageable) {
+        return customRepository.findUsingStreamFactory()
+                .filter(Objects::nonNull)
+                .map(product -> mapper.map(product, ProductDTO.class));
+    }
+
+    @Override
+    public Flowable<IProduct> findUsingSolrTemplate(Pageable pageable) {
+        return customRepository.findUsingSolrTemplate()
                 .filter(Objects::nonNull)
                 .map(product -> mapper.map(product, ProductDTO.class));
     }

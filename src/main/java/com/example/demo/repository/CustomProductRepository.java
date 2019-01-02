@@ -4,5 +4,7 @@ import com.example.demo.model.Product;
 import io.reactivex.Flowable;
 
 public interface CustomProductRepository {
-    Flowable<Product> performStreamSearch();
+    Flowable<Product> findUsingSolrTemplate();
+
+    Flowable<Product> findUsingStreamFactory();
 }

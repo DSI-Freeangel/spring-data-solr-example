@@ -12,13 +12,17 @@ import org.springframework.web.bind.annotation.RequestMethod;
 import org.springframework.web.bind.annotation.RestController;
 
 @RestController
-@RequestMapping("/stream")
 @RequiredArgsConstructor
 public class ProductStreamingAPI {
     private final ProductService service;
 
-    @RequestMapping(method = RequestMethod.GET)
-    public Flowable<IProduct> findAllProducts(@PageableDefault(page = 0, size = Constants.DEFAULT_PAGE_SIZE) Pageable pageable) {
-        return service.getProductsPageStream(pageable);
+    @RequestMapping(path = "/findAllUsingSolrTemplate", method = RequestMethod.GET)
+    public Flowable<IProduct> findAllUsingSolrTemplate(@PageableDefault(page = 0, size = Constants.DEFAULT_PAGE_SIZE) Pageable pageable) {
+        return service.findUsingSolrTemplate(pageable);
+    }
+
+    @RequestMapping(path = "/findAllUsingStreamFactory", method = RequestMethod.GET)
+    public Flowable<IProduct> findAllUsingStreamFactory(@PageableDefault(page = 0, size = Constants.DEFAULT_PAGE_SIZE) Pageable pageable) {
+        return service.findUsingStreamFactory(pageable);
     }
 }

@@ -3,23 +3,39 @@ package com.example.demo.repository;
 import com.example.demo.model.Product;
 import io.reactivex.BackpressureStrategy;
 import io.reactivex.Flowable;
-import lombok.RequiredArgsConstructor;
+import io.reactivex.schedulers.Schedulers;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.StreamingResponseCallback;
+import org.apache.solr.client.solrj.io.SolrClientCache;
+import org.apache.solr.client.solrj.io.Tuple;
+import org.apache.solr.client.solrj.io.stream.StreamContext;
+import org.apache.solr.client.solrj.io.stream.TupleStream;
+import org.apache.solr.client.solrj.io.stream.expr.DefaultStreamFactory;
+import org.apache.solr.client.solrj.io.stream.expr.StreamFactory;
 import org.apache.solr.common.SolrDocument;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.solr.core.SolrTemplate;
 import org.springframework.stereotype.Repository;
 
 import java.util.concurrent.atomic.AtomicLong;
 
 @Repository
-@RequiredArgsConstructor
 public class CustomProductRepositoryImpl implements CustomProductRepository {
     private final SolrTemplate solrTemplate;
+    private final StreamFactory streamFactory;
+    private final StreamContext streamContext;
+
+    public CustomProductRepositoryImpl(SolrTemplate solrTemplate, @Value("${spring.data.solr.zk-host}") String zkHost) {
+        this.solrTemplate = solrTemplate;
+        this.streamFactory = new DefaultStreamFactory().withCollectionZkHost("techproducts", zkHost);
+        this.streamContext = new StreamContext();
+        streamContext.setStreamFactory(streamFactory);
+        streamContext.setSolrClientCache(new SolrClientCache());
+    }
 
     @Override
-    public Flowable<Product> performStreamSearch() {
-        return Flowable.create(emitter -> {
+    public Flowable<Product> findUsingSolrTemplate() {
+        return Flowable.create(emitter ->
             solrTemplate.execute((solrClient) -> {
                 SolrQuery query = new SolrQuery("*:*");
                 query.setRows(10);
@@ -28,8 +44,7 @@ public class CustomProductRepositoryImpl implements CustomProductRepository {
                 solrClient.queryAndStreamResponse("techproducts", query, new StreamingResponseCallback() {
                     @Override
                     public void streamSolrDocument(SolrDocument solrDocument) {
-                        Product product = solrTemplate.convertSolrDocumentToBean(solrDocument, Product.class);
-                        emitter.onNext(product);
+                        emitter.onNext(solrDocument);
                         if(cursor.incrementAndGet() == found.get()) {
                             emitter.onComplete();
                         }
@@ -38,10 +53,51 @@ public class CustomProductRepositoryImpl implements CustomProductRepository {
                     @Override
                     public void streamDocListInfo(long numFound, long start, Float maxScore) {
                         System.out.println(String.format("found=%s, start=%s, maxScore=%s", numFound, start, maxScore));
+                        if(numFound < found.get()) {
+                            found.set(numFound);
+                        }
                     }
                 });
                 return null;
-            });
-        }, BackpressureStrategy.BUFFER);
+            })
+        , BackpressureStrategy.BUFFER)
+                .map(document -> solrTemplate.convertSolrDocumentToBean((SolrDocument)document, Product.class));
+    }
+
+    @Override
+    public Flowable<Product> findUsingStreamFactory() {
+        return findWithStreamingQuery("parallel(techproducts, search(techproducts, q=\"*.*\", fl=\"id, name, inStock, cat, price, " +
+                "features\", sort=\"id asc\", partitionKeys=\"id\"), workers=\"2\", sort=\"id asc\")", Product.class);
+    }
+
+    private <T> Flowable<T> findWithStreamingQuery(String query, Class<T> returnType) {
+        return Flowable.create(emitter -> {
+            TupleStream stream = streamFactory.constructStream(query);
+            stream.setStreamContext(streamContext);
+            try {
+                stream.open();
+                Tuple tuple;
+                while (!(tuple = stream.read()).EOF) {
+                    emitter.onNext(tuple);
+                }
+            } finally {
+                emitter.onComplete();
+                stream.close();
+            }
+        }, BackpressureStrategy.BUFFER)
+                .parallel()
+                .runOn(Schedulers.computation())
+                .map(Tuple.class::cast)
+                .map(this::toSolrDocument)
+                .map(document -> solrTemplate.convertSolrDocumentToBean(document, returnType))
+                .sequential();
+    }
+
+    private SolrDocument toSolrDocument(Tuple tuple) {
+        final SolrDocument document = new SolrDocument();
+        for (Object key : tuple.fields.keySet()) {
+            document.setField((String) key, tuple.get(key));
+        }
+        return document;
     }
 }

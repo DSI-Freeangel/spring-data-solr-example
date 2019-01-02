@@ -37,17 +37,22 @@ public class CustomProductRepositoryImpl implements CustomProductRepository {
 
     @Override
     public Flowable<Product> findUsingSolrTemplate() {
+        SolrQuery query = new SolrQuery("*:*");
+        query.setRows(10);
+        return findWithSolrTemplate("techproducts", query, Product.class);
+    }
+
+    private <T> Flowable<T> findWithSolrTemplate(String collection, SolrQuery query, Class<T> returnType) {
         return Flowable.create(emitter ->
             solrTemplate.execute((solrClient) -> {
-                SolrQuery query = new SolrQuery("*:*");
-                query.setRows(10);
+                //TODO: Temporary. Pagination should be used instead
                 AtomicLong cursor = new AtomicLong(0);
                 AtomicLong found = new AtomicLong(10);
-                solrClient.queryAndStreamResponse("techproducts", query, new StreamingResponseCallback() {
+                solrClient.queryAndStreamResponse(collection, query, new StreamingResponseCallback() {
                     @Override
                     public void streamSolrDocument(SolrDocument solrDocument) {
                         emitter.onNext(solrDocument);
-                        if(cursor.incrementAndGet() == found.get()) {
+                        if (cursor.incrementAndGet() == found.get()) {
                             emitter.onComplete();
                         }
                     }
@@ -55,7 +60,7 @@ public class CustomProductRepositoryImpl implements CustomProductRepository {
                     @Override
                     public void streamDocListInfo(long numFound, long start, Float maxScore) {
                         log.info(String.format("found=%s, start=%s, maxScore=%s", numFound, start, maxScore));
-                        if(numFound < found.get()) {
+                        if (numFound < found.get()) {
                             found.set(numFound);
                         }
                     }
@@ -65,7 +70,7 @@ public class CustomProductRepositoryImpl implements CustomProductRepository {
         , BackpressureStrategy.BUFFER)
                 .parallel()
                 .runOn(Schedulers.computation())
-                .map(document -> solrTemplate.convertSolrDocumentToBean((SolrDocument)document, Product.class))
+                .map(document -> solrTemplate.convertSolrDocumentToBean((SolrDocument)document, returnType))
                 .sequential();
     }
 

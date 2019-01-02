@@ -4,6 +4,7 @@ import com.example.demo.model.Product;
 import io.reactivex.BackpressureStrategy;
 import io.reactivex.Flowable;
 import io.reactivex.schedulers.Schedulers;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.solr.client.solrj.SolrQuery;
 import org.apache.solr.client.solrj.StreamingResponseCallback;
 import org.apache.solr.client.solrj.io.SolrClientCache;
@@ -19,6 +20,7 @@ import org.springframework.stereotype.Repository;
 
 import java.util.concurrent.atomic.AtomicLong;
 
+@Slf4j
 @Repository
 public class CustomProductRepositoryImpl implements CustomProductRepository {
     private final SolrTemplate solrTemplate;
@@ -52,7 +54,7 @@ public class CustomProductRepositoryImpl implements CustomProductRepository {
 
                     @Override
                     public void streamDocListInfo(long numFound, long start, Float maxScore) {
-                        System.out.println(String.format("found=%s, start=%s, maxScore=%s", numFound, start, maxScore));
+                        log.info(String.format("found=%s, start=%s, maxScore=%s", numFound, start, maxScore));
                         if(numFound < found.get()) {
                             found.set(numFound);
                         }
@@ -61,7 +63,10 @@ public class CustomProductRepositoryImpl implements CustomProductRepository {
                 return null;
             })
         , BackpressureStrategy.BUFFER)
-                .map(document -> solrTemplate.convertSolrDocumentToBean((SolrDocument)document, Product.class));
+                .parallel()
+                .runOn(Schedulers.computation())
+                .map(document -> solrTemplate.convertSolrDocumentToBean((SolrDocument)document, Product.class))
+                .sequential();
     }
 
     @Override

@@ -23,7 +23,7 @@ import static org.mockito.Mockito.when;
 @RunWith(MockitoJUnitRunner.class)
 public class ProductServiceImplTest {
 
-    public static final String ID = "1";
+    private static final String ID = "1";
 
     @Mock
     private SchedulerProvider schedulerProvider;
@@ -57,9 +57,11 @@ public class ProductServiceImplTest {
 
         service.save(productDTO)
                 .test()
+                .assertSubscribed()
                 .assertValueCount(1)
                 .assertValue(productDTO)
                 .assertComplete()
+                .assertNoErrors()
                 .dispose();
     }
 
@@ -72,9 +74,11 @@ public class ProductServiceImplTest {
 
         service.findById(ID)
                 .test()
+                .assertSubscribed()
                 .assertValueCount(1)
                 .assertValue(productDTO)
                 .assertComplete()
+                .assertNoErrors()
                 .dispose();
     }
 }
